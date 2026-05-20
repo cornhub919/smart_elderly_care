@@ -1,0 +1,30 @@
+# 智护家 - 智慧居家养老多模态监护系统
+# Python 依赖包
+
+# 核心框架
+streamlit>=1.28.0
+plotly>=5.18.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# 视频处理
+opencv-python>=4.8.0
+mediapipe>=0.10.0
+
+# 音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# 机器学习
+scikit-learn>=1.3.0
+
+# 可选：ASR语音识别（用于关键词检测）
+# openai-whisper>=20231117
+
+# 数据可视化
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# 工具库
+python-dateutil>=2.8.0
+requests>=2.31.0
