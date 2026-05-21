@@ -1,0 +1,19 @@
+# 智护家应用版 - Python依赖
+
+# 深度学习
+torch>=2.0.0
+numpy>=1.24.0
+
+# Web界面
+streamlit>=1.28.0
+plotly>=5.18.0
+
+# 视频处理
+opencv-python>=4.8.0
+
+# 音频处理
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# 数据处理
+pandas>=2.0.0
