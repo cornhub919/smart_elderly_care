@@ -1,0 +1,103 @@
+\begin{thebibliography}{12}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{#1}
+\expandafter\ifx\csname urlstyle\endcsname\relax\else
+  \urlstyle{same}\fi
+\expandafter\ifx\csname href\endcsname\relax
+  \DeclareUrlCommand\doi{\urlstyle{rm}}
+  \def\eprint#1#2{#2}
+\else
+  \def\doi#1{\href{https://doi.org/#1}{\nolinkurl{#1}}}
+  \let\eprint\href
+\fi
+
+\bibitem[Rachakonda et~al.(2020)Rachakonda, Mohanty, and
+  Kougianos]{rachakonda2020cstick}
+RACHAKONDA L, MOHANTY S~P, KOUGIANOS E.
+\newblock {cStick}: A calm stick for fall prediction, detection and post-fall
+  analytics\allowbreak[J].
+\newblock IEEE Internet of Things Journal, 2020, 7\allowbreak (12):
+  11342-11352.
+
+\bibitem[Popescu et~al.(2009)Popescu and Mahnot]{popescu2009acoustic}
+POPESCU M, MAHNOT A.
+\newblock Acoustic fall detection using a one-class classifier and improved
+  features\allowbreak[J].
+\newblock IEEE Journal of Biomedical and Health Informatics, 2009,
+  13\allowbreak (5): 696-705.
+
+\bibitem[Baltru{\v{s}}aitis et~al.(2019)Baltru{\v{s}}aitis, Ahuja, and
+  Morency]{baltrusaitis2019multimodal}
+BALTRU{\v{S}}AITIS T, AHUJA C, MORENCY L~P.
+\newblock Multimodal machine learning: A survey and taxonomy\allowbreak[J].
+\newblock IEEE Transactions on Pattern Analysis and Machine Intelligence, 2019,
+  41\allowbreak (2): 423-443.
+
+\bibitem[Piczak(2015)]{piczak2015esc}
+PICZAK K~J.
+\newblock {ESC}: Dataset for environmental sound
+  classification\allowbreak[C]//\allowbreak
+MM '15: Proceedings of the 23rd ACM International Conference on Multimedia.
+\newblock Brisbane, Australia: ACM, 2015: 1015-1018.
+
+\bibitem[Lugaresi et~al.(2019)Lugaresi, Tang, Nash, McClanahan, Uboweja, Hays,
+  Zhang, Chang, Yong, Lee, et~al.]{lugaresi2019mediapipe}
+LUGARESI C, TANG J, NASH H, et~al.
+\newblock {MediaPipe}: A framework for building perception
+  pipelines\allowbreak[C]//\allowbreak
+Workshop on Machine Learning for Multimodal Interaction (MLMI).
+\newblock Jeju, South Korea, 2019: 43-53.
+
+\bibitem[Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez,
+  Kaiser, and Polosukhin]{vaswani2017attention}
+VASWANI A, SHAZEER N, PARMAR N, et~al.
+\newblock Attention is all you need\allowbreak[C]//\allowbreak
+Advances in Neural Information Processing Systems (NeurIPS): Vol.~30.
+\newblock Long Beach, CA, USA, 2017: 5998-6008.
+
+\bibitem[Lu et~al.(2019)Lu, Batra, Parikh, and Lee]{lu2019vilbert}
+LU J, BATRA D, PARIKH D, et~al.
+\newblock {ViLBERT}: Pretraining task-agnostic visiolinguistic representations
+  for vision-and-language tasks\allowbreak[C]//\allowbreak
+Advances in Neural Information Processing Systems (NeurIPS): Vol.~32.
+\newblock Vancouver, Canada, 2019: 13-23.
+
+\bibitem[Li et~al.(2021)Li, Selvaraju, Gotmare, Joty, Xiong, and
+  Hoi]{li2021align}
+LI J, SELVARAJU R, GOTMARE A, et~al.
+\newblock {ALBEF}: Align before fuse: Vision and language representation
+  learning with momentum distillation\allowbreak[C]//\allowbreak
+Advances in Neural Information Processing Systems (NeurIPS): Vol.~34.
+\newblock Virtual, 2021: 9694-9705.
+
+\bibitem[Auvinet et~al.(2010)Auvinet, Multon, Saint-Arnaud, Rousseau, and
+  Meunier]{auvinet2010fall}
+AUVINET E, MULTON F, SAINT-ARNAUD A, et~al.
+\newblock Fall detection with multiple cameras: An occlusion-resistant method
+  based on 3-d silhouette vertical distribution\allowbreak[J].
+\newblock IEEE Transactions on Information Technology in Biomedicine, 2010,
+  15\allowbreak (2): 290-300.
+
+\bibitem[McFee et~al.(2015)McFee, Raffel, Liang, Ellis, McVicar, Battenberg,
+  and Nieto]{mcfee2015librosa}
+MCFEE B, RAFFEL C, LIANG D, et~al.
+\newblock {librosa}: Audio and music signal analysis in
+  python\allowbreak[C]//\allowbreak
+Proceedings of the 14th Python in Science Conference (SciPy).
+\newblock Austin, TX, USA, 2015: 18-24.
+
+\bibitem[Gong et~al.(2021)Gong, Chung, and Glass]{gong2021ast}
+GONG Y, CHUNG Y~A, GLASS J.
+\newblock {AST}: Audio spectrogram transformer\allowbreak[C]//\allowbreak
+Proceedings of the Annual Conference of the International Speech Communication
+  Association (Interspeech).
+\newblock Brno, Czech Republic, 2021: 571-575.
+
+\bibitem[Zhang et~al.(2018)Zhang, Cisse, Dauphin, and
+  Lopez-Paz]{zhang2018mixup}
+ZHANG H, CISSE M, DAUPHIN Y~N, et~al.
+\newblock {mixup}: Beyond empirical risk minimization\allowbreak[J].
+\newblock International Conference on Learning Representations (ICLR), 2018,
+  6\allowbreak (1): 1-13.
+
+\end{thebibliography}
