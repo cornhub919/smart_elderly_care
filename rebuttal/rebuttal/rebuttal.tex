@@ -1,0 +1,75 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\usepackage[rebuttal]{cvpr}
+
+% Include other packages here, before hyperref.
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+
+%%%%%%%%% PAPER ID  - PLEASE UPDATE
+\def\paperID{*****} % *** Enter the Paper ID here
+\def\confName{CVPR}
+\def\confYear{2026}
+
+\begin{document}
+
+%%%%%%%%% TITLE - PLEASE UPDATE
+\title{Author Response: Multi-Modal Fusion for Elderly Care Risk Assessment}
+
+\maketitle
+\thispagestyle{empty}
+\appendix
+
+%%%%%%%%% BODY TEXT
+We sincerely thank the reviewers for their insightful questions. Below we address each concern in detail.
+
+%-------------------------------------------------------------------------
+\section{Model Scale and Advantages over End-to-End Large Models}
+
+Our system is a \textbf{medium-sized multi-modal fusion model} (${\sim}$200M parameters), comprising a VideoMAE-based video encoder (768-dim, 12-layer Transformer), an AST audio encoder (768-dim), a health signal Transformer (256-dim, 4-layer), a medication embedding layer (128-dim), and a cross-attention fusion network (512-dim, 4-layer). This is orders of magnitude smaller than end-to-end large models (e.g., GPT-4V ${\sim}$1.7T, LLaVA-13B).
+
+Compared to end-to-end large models, our design offers key advantages for the elderly care domain:
+
+\noindent\textbf{(1) Deployment feasibility.} Our model can run on edge devices with millisecond-level inference latency, whereas large models require cloud API calls with second-level latency—unacceptable for emergency response scenarios like fall detection.
+
+\noindent\textbf{(2) Privacy preservation.} All data is processed locally; no sensitive health data needs to be uploaded to external cloud services, which is critical for elderly health monitoring.
+
+\noindent\textbf{(3) Interpretability and modularity.} The modular architecture (independent encoders + cross-attention fusion) enables tracing which modality contributes to a risk prediction, unlike the black-box nature of end-to-end LLMs. Each encoder can also be independently upgraded.
+
+\noindent\textbf{(4) Domain specialization.} Our cross-attention fusion explicitly models inter-modal interactions tailored to risk assessment, providing more controllable and interpretable multi-modal reasoning than implicit fusion in general-purpose LLMs.
+
+%-------------------------------------------------------------------------
+\section{Risk Level Label Definition and Subjectivity}
+
+\noindent\textbf{Label definition.} Risk levels (Low/Medium/High) are defined based on multi-dimensional criteria grounded in clinical guidelines and geriatric care standards: \emph{Low}—normal activities with vital signs in healthy ranges (e.g., HR 60--100 bpm, SpO$_2{>}95\%$); \emph{Medium}—abnormal behaviors or health warnings (e.g., prolonged inactivity, nocturnal anomalies, medication non-adherence); \emph{High}—emergency events (e.g., falls, distress calls, critical vital signs such as HR${<}$50 or SpO$_2{<}$90\%).
+
+\noindent\textbf{Label generation.} In the current prototype stage, we employ rule-based generation with simulated data due to: (1) the scarcity of real elderly safety event data (low-frequency events), (2) strict privacy regulations on elderly health data, and (3) the goal of validating technical feasibility. The rules are derived from clinical thresholds documented in geriatric medicine literature. For future deployment, we plan to collaborate with eldercare institutions to obtain de-identified historical data and introduce expert annotation.
+
+\noindent\textbf{Addressing subjectivity.} We acknowledge that label boundaries can be ambiguous (e.g., HR at the boundary of normal/abnormal). To mitigate this, we have implemented: \emph{label smoothing} ($\epsilon{=}0.1$) to prevent overconfident predictions~\cite{muller2019label}, \emph{cost-sensitive learning} with class weights $[1.0, 2.0, 3.0]$ to prioritize high-risk samples~\cite{elkan2001foundations}, and \emph{probabilistic outputs} that convey prediction confidence. Deep learning models have also been shown to tolerate moderate label noise~\cite{rolnick2017deep}. In future work, we will explore soft labels and multi-expert annotation with majority voting to further reduce subjectivity.
+
+%-------------------------------------------------------------------------
+\section{Handling Data Imbalance for Low-Frequency Events}
+
+Elderly safety events are inherently imbalanced (${\sim}$70\% low, 20\% medium, 10\% high risk in our data). We address this at multiple levels:
+
+\noindent\textbf{Algorithm level.} We apply class-weighted cross-entropy loss ($[1.0, 2.0, 3.0]$) to up-weight rare high-risk samples, and label smoothing ($\epsilon{=}0.1$) to improve calibration. We plan to incorporate \emph{Focal Loss}~\cite{lin2017focal} to further down-weight easy examples and focus learning on hard, high-risk cases.
+
+\noindent\textbf{Data level.} Future improvements include: modality-specific augmentation (temporal cropping and frame resampling for video; noise injection and time-stretching for audio; temporal perturbation for physiological signals), and SMOTE-based oversampling for minority classes.
+
+\noindent\textbf{Evaluation level.} We evaluate using per-class recall (especially high-risk recall), F1-score, and AUC rather than accuracy alone, ensuring that the model's ability to detect critical high-risk events is properly measured.
+
+%%%%%%%%% REFERENCES
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+}
+
+\end{document}

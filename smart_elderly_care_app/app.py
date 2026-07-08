@@ -78,7 +78,7 @@ def show_sidebar():
         # 导航
         page = st.radio(
             "功能导航",
-            ["🏠 风险评估", "📊 健康数据", "💊 用药管理", "ℹ️ 系统说明"],
+            ["🏠 风险评估", "📅 健康周报", "📊 健康数据", "💊 用药管理", "ℹ️ 系统说明"],
             key="navigation"
         )
         
@@ -351,6 +351,227 @@ def show_prediction_result(video_file, audio_file, health_data, medication_data)
         else:
             st.success("**数据完整**: 所有模态数据均已提供")
 
+    # ---- 模态贡献分析（可解释性中间结果）----
+    st.markdown("### 🔬 模态贡献分析")
+
+    modality_weights = result.get("modality_weights", {})
+    attn_matrix = result.get("attention_matrix")
+    modality_names = result.get("modality_names", ["视频", "音频", "生理", "用药"])
+
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        st.markdown("#### 模态全局权重")
+        st.caption("模型学习到的各模态对最终决策的静态贡献（softmax 归一化）")
+        if modality_weights:
+            names = list(modality_weights.keys())
+            values = list(modality_weights.values())
+            fig_w = go.Figure(data=[
+                go.Bar(
+                    x=names,
+                    y=values,
+                    marker_color=["#42A5F5", "#66BB6A", "#FFCA28", "#EF5350"],
+                    text=[f"{v:.1%}" for v in values],
+                    textposition="outside",
+                )
+            ])
+            fig_w.update_layout(
+                yaxis_title="权重",
+                yaxis_range=[0, 1],
+                height=300,
+                margin=dict(l=20, r=20, t=30, b=20),
+            )
+            st.plotly_chart(fig_w, use_container_width=True)
+        else:
+            st.info("无法获取模态权重")
+
+    with col_b:
+        st.markdown("#### 跨模态注意力热力图")
+        st.caption("每行=query 模态，每列=key 模态；值越高表示 query 越关注该 key")
+        if attn_matrix:
+            import numpy as _np
+            mat = _np.array(attn_matrix)
+            fig_h = go.Figure(data=go.Heatmap(
+                z=mat,
+                x=modality_names,
+                y=modality_names,
+                colorscale="YlOrRd",
+                text=[[f"{v:.2f}" for v in row] for row in mat],
+                texttemplate="%{text}",
+                hovertemplate="Q=%{y} K=%{x} attn=%{z:.3f}<extra></extra>",
+            ))
+            fig_h.update_layout(
+                height=300,
+                margin=dict(l=20, r=20, t=30, b=20),
+                xaxis_title="Key 模态",
+                yaxis_title="Query 模态",
+            )
+            st.plotly_chart(fig_h, use_container_width=True)
+        else:
+            st.info("注意力矩阵不可用（可能模型未返回）")
+
+
+def show_weekly_report():
+    """显示健康周报页面"""
+    from inference.weekly_report import (
+        generate_weekly_records, analyze_records,
+        generate_report_text, save_report_json, RISK_NAMES, RISK_COLORS,
+    )
+
+    st.markdown('<p class="main-header">📅 健康周报</p>', unsafe_allow_html=True)
+    st.markdown("基于多模态模型对一周内每日数据的真实预测，自动生成结构化周报。")
+
+    # 控制栏
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        days = st.number_input("周报天数", min_value=3, max_value=14, value=7)
+    with col2:
+        seed = st.number_input("随机种子", min_value=0, max_value=999, value=42)
+    with col3:
+        st.write("")
+        generate_btn = st.button("生成周报", type="primary")
+
+    if generate_btn:
+        predictor = load_predictor()
+        feature_extractor = load_feature_extractor()
+        if predictor is None:
+            st.error("模型未加载，无法生成周报")
+            return
+
+        with st.spinner("正在生成每日评估记录..."):
+            records = generate_weekly_records(
+                predictor, feature_extractor, days=int(days), seed=int(seed)
+            )
+            analysis = analyze_records(records)
+            report_text = generate_report_text(records, analysis)
+
+        if "error" in analysis:
+            st.error("分析失败: " + str(analysis["error"]))
+            return
+
+        # ---- 摘要卡片 ----
+        st.markdown("### 本周概览")
+        rd = analysis.get("risk_distribution", {})
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("低风险天数", f"{rd.get(0,0)} 天")
+        with m2:
+            st.metric("中风险天数", f"{rd.get(1,0)} 天")
+        with m3:
+            st.metric("高风险天数", f"{rd.get(2,0)} 天")
+        with m4:
+            st.metric("平均置信度", f"{analysis.get('avg_confidence',0):.0%}")
+
+        # ---- 风险趋势折线图 ----
+        st.markdown("### 每日风险趋势")
+        trend = analysis.get("risk_trend", [])
+        dates = analysis.get("dates", [])
+        if trend and dates:
+            fig_t = go.Figure()
+            fig_t.add_trace(go.Scatter(
+                x=dates, y=trend, mode="lines+markers",
+                name="风险等级",
+                line=dict(color="#FF6F00", width=2),
+                marker=dict(size=8),
+                text=[RISK_NAMES.get(t, "?") for t in trend],
+                hovertemplate="%{x}<br>风险: %{text}<extra></extra>",
+            ))
+            fig_t.update_layout(
+                yaxis=dict(
+                    tickvals=[0, 1, 2],
+                    ticktext=["低风险", "中风险", "高风险"],
+                    range=[-0.3, 2.3],
+                ),
+                yaxis_title="风险等级",
+                xaxis_title="日期",
+                height=300,
+            )
+            st.plotly_chart(fig_t, use_container_width=True)
+
+        # ---- 健康指标周均值 ----
+        ha = analysis.get("health_avg", {})
+        if ha:
+            st.markdown("### 健康指标周均值")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1:
+                st.metric("心率", f"{ha.get('heart_rate',0):.0f}", "次/分")
+            with c2:
+                st.metric("血氧", f"{ha.get('blood_oxygen',0):.0f}%")
+            with c3:
+                st.metric("收缩压", f"{ha.get('systolic',0):.0f}")
+            with c4:
+                st.metric("舒张压", f"{ha.get('diastolic',0):.0f}")
+            with c5:
+                st.metric("日均步数", f"{ha.get('steps',0):.0f}")
+
+        # ---- 模态贡献 ----
+        mw = analysis.get("modality_weight_avg", {})
+        if mw:
+            st.markdown("### 模态贡献（模型平均权重）")
+            fig_mw = go.Figure(data=[
+                go.Bar(
+                    x=list(mw.keys()), y=list(mw.values()),
+                    marker_color=["#42A5F5", "#66BB6A", "#FFCA28", "#EF5350"],
+                    text=[f"{v:.1%}" for v in mw.values()],
+                    textposition="outside",
+                )
+            ])
+            fig_mw.update_layout(yaxis_range=[0, 1], height=250)
+            st.plotly_chart(fig_mw, use_container_width=True)
+
+        # ---- 风险提醒 ----
+        alerts = analysis.get("alerts", [])
+        if alerts:
+            st.markdown("### 风险提醒")
+            for a in alerts:
+                st.error(a)
+
+        # ---- 照护建议 ----
+        suggestions = analysis.get("suggestions", [])
+        if suggestions:
+            st.markdown("### 照护建议")
+            for s in suggestions:
+                st.info(s)
+
+        # ---- 每日明细表格 ----
+        st.markdown("### 每日评估明细")
+        table_data = []
+        for r in records:
+            if r.get("risk_level", -1) >= 0:
+                table_data.append({
+                    "日期": r["date"],
+                    "风险等级": r["risk_name"],
+                    "置信度": f"{r['confidence']:.0%}",
+                    "场景": r.get("scenario", ""),
+                    "缺失模态": ", ".join(r.get("missing_modalities", [])) or "无",
+                })
+            else:
+                table_data.append({
+                    "日期": r["date"],
+                    "风险等级": "评估失败",
+                    "置信度": "-",
+                    "场景": r.get("scenario", ""),
+                    "缺失模态": "-",
+                })
+        st.dataframe(table_data, use_container_width=True)
+
+        # ---- 文本报报告 + 导出 ----
+        st.markdown("### 完整周报文本")
+        st.text(report_text)
+
+        # 保存到文件
+        report_path = os.path.join("reports", f"weekly_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        save_report_json(records, analysis, report_text, report_path)
+        st.success(f"周报已保存至: {report_path}")
+
+        with open(report_path, "r", encoding="utf-8") as f:
+            st.download_button(
+                "下载周报 (JSON)",
+                data=f.read(),
+                file_name=os.path.basename(report_path),
+                mime="application/json",
+            )
+
 
 def show_health_data():
     """显示健康数据页面"""
@@ -505,6 +726,8 @@ def main():
     
     if "风险评估" in page:
         show_risk_assessment()
+    elif "健康周报" in page:
+        show_weekly_report()
     elif "健康数据" in page:
         show_health_data()
     elif "用药管理" in page:

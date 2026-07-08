@@ -1,0 +1,9 @@
+{
+  "dataset": "Pexels 视频集",
+  "note": "跌倒/挣扎/日常三类视频，共 58 个",
+  "categories": {
+    "falls": 39,
+    "struggle": 30,
+    "daily": 43
+  }
+}

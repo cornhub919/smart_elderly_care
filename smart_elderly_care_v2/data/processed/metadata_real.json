@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-07-08T00:23:54.964504",
+  "total_samples": 900,
+  "label_distribution": {
+    "0": 300,
+    "1": 300,
+    "2": 300
+  },
+  "feature_dims": {
+    "video": 768,
+    "audio": 768,
+    "health": 256,
+    "medication": 128
+  },
+  "data_sources": {
+    "esc50_ready": true,
+    "pexels_video_ready": true,
+    "pexels_video_counts": {
+      "falls": 39,
+      "struggle": 30,
+      "daily": 43
+    },
+    "video_feature_cache": {
+      "0": 43,
+      "1": 30,
+      "2": 39
+    },
+    "urfd_ready": true
+  },
+  "split": {
+    "train": 720,
+    "val": 90,
+    "test": 90
+  }
+}

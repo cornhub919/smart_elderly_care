@@ -345,9 +345,11 @@ def main():
     
     # 创建训练器
     trainer = Trainer(config, model, device)
-    
-    # 训练
+
+    # 训练；full 与 lite 分别保存到子目录，避免互相覆盖（消融实验需对比两个 checkpoint）
     save_dir = config['data']['checkpoint_dir']
+    if args.model == 'lite':
+        save_dir = os.path.join(save_dir, 'lite')
     history = trainer.train(train_loader, val_loader, save_dir)
     
     # 保存训练历史

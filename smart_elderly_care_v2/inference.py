@@ -48,7 +48,7 @@ class RiskPredictor:
         else:
             self.model = MultiModalFusionNetLite(model_config)
         
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model = self.model.to(self.device)
         self.model.eval()

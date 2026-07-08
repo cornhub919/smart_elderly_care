@@ -1,0 +1,199 @@
+\chapter{数据集与特征提取}
+\label{chap:data}
+
+本章介绍本工作使用的数据集、统一特征提取器的设计，以及数据构建流程。
+
+\section{数据集概述}
+
+本工作使用三个数据源，覆盖四模态，如表\ref{tab:datasets}所示。
+
+\begin{table}[H]
+\centering
+\caption{数据集概览}
+\label{tab:datasets}
+\begin{tabular}{llll}
+\toprule
+模态 & 数据集 & 规模 & 说明 \\
+\midrule
+视频 & Pexels公开视频 & 112段mp4 & 3风险类别: daily(43)/struggle(30)/falls(39) \\
+音频 & ESC-50 & 2000条wav & 选取11类相关环境声 \\
+生理 & 半合成 & --- & 按医学正常/异常范围生成 \\
+用药 & 半合成 & --- & 按依从率/漏服规则生成 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{ESC-50音频数据集}
+
+ESC-50\cite{piczak2015esc}是环境声音分类的标准数据集，包含2000条5秒wav音频，50个类别。本工作选取与养老场景相关的11类，映射到3个风险等级，如表\ref{tab:esc50}所示。
+
+\begin{table}[H]
+\centering
+\caption{ESC-50类别到风险等级的映射}
+\label{tab:esc50}
+\begin{tabular}{lll}
+\toprule
+风险等级 & ESC-50类别 & 含义 \\
+\midrule
+高风险(2) & crying\_baby, screaming, glass\_breaking & 呼救/尖叫/撞击声 \\
+中风险(1) & sneezing, coughing, snoring & 生理异常 \\
+低风险(0) & rain, wind, crickets, water\_drops, dog, rooster & 正常背景 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Pexels视频数据集}
+
+通过关键词搜索Pexels视频库\footnote{\url{https://www.pexels.com/}}，按动作语义映射到三个风险等级：
+
+\begin{itemize}
+    \item \textbf{daily（日常活动，低风险）}：walking, cooking, reading, sitting calmly等，共43段
+    \item \textbf{struggle（挣扎/困难起身，中风险）}：person sitting down, struggling to stand, bending over等，共30段
+    \item \textbf{falls（跌倒，高风险）}：falling, trip and fall, person falling down等，共39段
+\end{itemize}
+
+\subsection{下载流程}
+
+下载流程为：搜索页HTML解析$\to$CDN直链提取$\to$断点续传下载。具体地：
+
+\begin{enumerate}
+    \item 访问Pexels搜索页（如\texttt{/search/videos/falling/}），获取HTML
+    \item 正则匹配\texttt{video-files} CDN直链，按video\_id去重，优先选择hd画质
+    \item 断点续传下载mp4文件
+\end{enumerate}
+
+\subsection{反爬限流处理}
+
+Pexels在连续搜索多个关键词后会触发HTTP 403 Forbidden反爬机制。本工作采用以下策略规避：
+
+\begin{itemize}
+    \item \textbf{UA轮换}：3个浏览器User-Agent随机选取
+    \item \textbf{随机延迟}：每次搜索后随机等待1.5--3.5秒
+    \item \textbf{失败重试}：最多3次重试，递增等待时间
+    \item \textbf{关键词筛选}：移除高频403的关键词
+\end{itemize}
+
+\section{统一特征提取器}
+\label{sec:extractor}
+
+\textbf{核心原则}：训练与推理使用同一套特征提取器（单一真源），保证特征分布一致。所有提取器实现于\texttt{unified\_feature\_extractor.py}。
+
+\subsection{视频特征提取}
+
+视频特征提取基于MediaPipe Tasks API（0.10.35版本）的PoseLandmarker，流程如图\ref{fig:video_feat}所示。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.5cm,
+    box/.style={draw, rounded corners, minimum width=2.8cm, minimum height=0.7cm, align=center, font=\small},
+    arrow/.style={->, >=Stealth, thick}
+]
+\node[box, fill=blue!10] (mp4) {mp4文件};
+\node[box, fill=blue!10, right=of mp4] (frames) {OpenCV抽帧\\(均匀64帧)};
+\node[box, fill=green!10, right=of frames] (pose) {MediaPipe\\33关键点};
+\node[box, fill=green!10, right=of pose] (motion) {运动特征\\(192维)};
+\node[box, fill=orange!10, right=of motion] (proj) {投影\\$\to$768维};
+\draw[arrow] (mp4) -- (frames);
+\draw[arrow] (frames) -- (pose);
+\draw[arrow] (pose) -- (motion);
+\draw[arrow] (motion) -- (proj);
+\end{tikzpicture}
+\caption{视频特征提取流程}
+\label{fig:video_feat}
+\end{figure}
+
+具体步骤：
+
+\begin{enumerate}
+    \item \textbf{抽帧}：用OpenCV均匀抽取64帧
+    \item \textbf{骨架检测}：每帧经PoseLandmarker检测33个人体关键点。采用\texttt{RunningMode.IMAGE}单帧检测模式，避免\texttt{VIDEO}模式的时间戳单调性约束问题。
+    \item \textbf{运动特征提取}：从关键点序列提取
+    \begin{itemize}
+        \item 中心轨迹：重心$(x,y)$随时间变化，$64 \times 2 = 128$维
+        \item 躯干角度：躯干与垂直方向夹角，$64 \times 1 = 64$维
+        \item 速度统计：重心速度的均值/方差/峰值，3维
+    \end{itemize}
+    合计192维原始特征
+    \item \textbf{投影}：经确定性投影到768维
+\end{enumerate}
+
+\textbf{技术细节}：MediaPipe 0.10.35移除了旧的\texttt{mp.solutions.pose} API，迁移至\texttt{PoseLandmarker} Tasks API。模型文件\texttt{pose\_landmarker\_lite.task}通过\texttt{model\_asset\_buffer}（字节流）加载，规避中文路径下\texttt{model\_asset\_path}加载失败的问题。
+
+\subsection{音频特征提取}
+
+基于librosa\cite{mcfee2015librosa}提取以下声学特征：
+
+\begin{table}[H]
+\centering
+\caption{音频特征组成}
+\label{tab:audio_feat}
+\begin{tabular}{llr}
+\toprule
+特征 & 描述 & 维度 \\
+\midrule
+MFCC & 13维梅尔频率倒谱系数 $\times$ 2(均值+方差) & 26 \\
+Mel频谱 & 64维Mel频带 $\times$ 2 & 128 \\
+RMS能量 & 均值/方差/最大/最小 & 4 \\
+过零率 & 均值/方差/最大 & 3 \\
+谱质心/带宽 & 均值/方差 & 4 \\
+\midrule
+合计 & & 165 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+165维原始特征经确定性投影到768维。
+
+\subsection{生理特征提取}
+
+生理特征输入为5个指标：心率、血氧、收缩压、舒张压、步数。提取统计量（均值/方差/极值/Z-score）后确定性投影到256维。半合成生理数据按风险等级的医学正常/异常范围生成：
+
+\begin{itemize}
+    \item 低风险：心率60--100 bpm，血氧$\geq$95\%，血压正常
+    \item 中风险：心率异常（过速/过缓），血氧90--95\%
+    \item 高风险：心率严重异常，血氧$<$90\%，血压危急
+\end{itemize}
+
+\subsection{用药特征提取}
+
+用药特征输入为：应服药数、已服药数、漏服次数、依从率。经规则编码后投影到128维。半合成用药数据按风险等级的依从率生成：
+
+\begin{itemize}
+    \item 低风险：依从率$\geq$90\%，无漏服
+    \item 中风险：依从率70--90\%，偶有漏服
+    \item 高风险：依从率$<$70\%，多次漏服
+\end{itemize}
+
+\section{数据构建流程}
+
+最终数据集统计如表\ref{tab:dataset_stats}所示。
+
+\begin{table}[H]
+\centering
+\caption{最终数据集统计}
+\label{tab:dataset_stats}
+\begin{tabular}{lr}
+\toprule
+项目 & 数值 \\
+\midrule
+总样本数 & 900 \\
+标签分布 & 低/中/高各300（均衡） \\
+特征维度 & video(768) + audio(768) + health(256) + med(128) \\
+数据切分 & train=720 / val=90 / test=90 \\
+视频特征非零率 & 100\%（对比迭代2的7.6\%） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{样本构建策略}
+
+数据构建分三步：
+
+\paragraph{Step 1: Pexels视频样本} 提取112段视频的真实骨架特征，每段配对同类ESC-50音频和半合成生理/用药数据。按风险等级缓存所有提取成功的视频特征。
+
+\paragraph{Step 2: ESC-50音频样本} 提取真实音频特征，配对\textbf{同类真实视频特征}（从Step 1缓存中随机选取），辅以半合成生理/用药数据。
+
+\paragraph{Step 3: 半合成补充样本} 各类补满至300个。视频/音频用同类真实特征$+$2\%高斯噪声增强，生理/用药按规则生成。
+
+此策略保证：（1）三类各300样本均衡；（2）所有样本的视频/音频特征均基于真实数据（非零向量）；（3）半合成样本通过特征级增强（加噪）扩充多样性。

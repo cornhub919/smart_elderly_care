@@ -1,0 +1,204 @@
+\chapter{系统架构与方法}
+\label{chap:method}
+
+本章描述智护家系统的总体架构、跨模态注意力融合机制、模态权重设计以及缺失数据处理策略。
+
+\section{系统总体架构}
+
+系统采用``单模态真实分析器 + 学习型融合网络''的架构，如图\ref{fig:architecture}所示。四模态输入分别经特征提取器得到固定维度的特征向量，再经Cross-Modal Attention融合网络进行跨模态交互，最终输出三级风险评估（低/中/高风险）。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm,
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.8cm, align=center, font=\small},
+    extractor/.style={box, fill=blue!10},
+    fusion/.style={box, fill=green!10, minimum width=8cm},
+    classifier/.style={box, fill=orange!10, minimum width=6cm},
+    input/.style={box, fill=gray!10},
+    output/.style={box, fill=red!10, minimum width=4cm},
+    arrow/.style={->, >=Stealth, thick}
+]
+
+% 输入层
+\node[input] (vin) {视频(mp4)};
+\node[input, right=of vin] (ain) {音频(wav)};
+\node[input, right=of ain] (hin) {生理数据};
+\node[input, right=of hin] (min) {用药记录};
+
+% 特征提取层
+\node[extractor, below=of vin] (vext) {MediaPipe\\骨架$\to$768维};
+\node[extractor, below=of ain] (aext) {librosa\\声学$\to$768维};
+\node[extractor, below=of hin] (hext) {统计量\\$\to$256维};
+\node[extractor, below=of min] (mext) {规则编码\\$\to$128维};
+
+% 投影层
+\node[box, fill=yellow!10, below=1.2cm of vext, minimum width=10cm] (proj) {特征投影层（对齐到512维 + 模态类型嵌入）};
+
+% 融合层
+\node[fusion, below=of proj] (fusion) {Cross-Modal Attention $\times$ 4层 + Self-Attention + FFN\\（8 heads, 残差连接+LayerNorm）};
+
+% 分类层
+\node[classifier, below=of fusion] (cls) {分类头: 512 $\to$ 256 $\to$ 128 $\to$ 3};
+
+% 输出
+\node[output, below=of cls] (out) {风险等级 + 概率分布 + 注意力权重};
+
+% 连接
+\draw[arrow] (vin) -- (vext);
+\draw[arrow] (ain) -- (aext);
+\draw[arrow] (hin) -- (hext);
+\draw[arrow] (min) -- (mext);
+\draw[arrow] (vext) -- (proj);
+\draw[arrow] (aext) -- (proj);
+\draw[arrow] (hext) -- (proj);
+\draw[arrow] (mext) -- (proj);
+\draw[arrow] (proj) -- (fusion);
+\draw[arrow] (fusion) -- (cls);
+\draw[arrow] (cls) -- (out);
+
+\end{tikzpicture}
+\caption{智护家系统总体架构}
+\label{fig:architecture}
+\end{figure}
+
+各模态特征维度如表\ref{tab:dims}所示。
+
+\begin{table}[H]
+\centering
+\caption{各模态特征维度}
+\label{tab:dims}
+\begin{tabular}{lll}
+\toprule
+模态 & 特征提取方法 & 特征维度 \\
+\midrule
+视频 & MediaPipe PoseLandmarker 33关键点 & 768 \\
+音频 & librosa MFCC + Mel频谱 + 统计量 & 768 \\
+生理 & 心率/血氧/血压/步数统计量 & 256 \\
+用药 & 应服/已服/漏服/依从率编码 & 128 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{跨模态注意力机制}
+\label{sec:crossattn}
+
+跨模态注意力的核心是让每个模态的特征作为Query，与其他模态的Key/Value进行注意力计算，从而实现模态间信息交互。
+
+\subsection{特征投影与模态嵌入}
+
+给定四个模态特征 $F_v, F_a, F_h, F_m \in \mathbb{R}^{B \times d_i}$（其中 $d_i$ 为各模态原始维度），首先投影到统一维度 $d_{fusion}=512$ 并叠加模态类型嵌入：
+
+\begin{equation}
+\tilde{F}_i = W_i F_i + E_{mod}(i), \quad i \in \{v, a, h, m\}
+\label{eq:proj}
+\end{equation}
+
+其中 $W_i \in \mathbb{R}^{512 \times d_i}$ 为各模态投影矩阵，$E_{mod}(i) \in \mathbb{R}^{512}$ 为可学习的模态类型嵌入。投影层包含LayerNorm、ReLU激活和Dropout（0.2）。
+
+四个模态特征堆叠为序列 $X \in \mathbb{R}^{B \times 4 \times 512}$，送入Cross-Modal Attention层。
+
+\subsection{多头注意力计算}
+
+每层Cross-Modal Attention的计算遵循标准多头注意力\cite{vaswani2017attention}。对于输入序列 $X$，首先通过线性投影得到Query、Key、Value：
+
+\begin{equation}
+Q = XW^Q, \quad K = XW^K, \quad V = XW^V
+\end{equation}
+
+其中 $W^Q, W^K, W^V \in \mathbb{R}^{512 \times 512}$。注意力计算为：
+
+\begin{equation}
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+\label{eq:attention}
+\end{equation}
+
+其中 $d_k = 512 / 8 = 64$ 为每个注意力头的维度。8个注意力头并行计算后拼接，经输出投影。
+
+此处Query、Key、Value均来自同一模态序列 $X$，因此实际上是跨模态的自注意力——每个模态token可以attend到所有模态（含自身）。这使得模型能够学习``哪些模态对当前判断更相关''。
+
+\subsection{残差连接与前馈网络}
+
+每层包含残差连接和LayerNorm，遵循Transformer的标准结构：
+
+\begin{equation}
+X' = \text{LayerNorm}(X + \text{MultiHead}(X, X, X))
+\end{equation}
+
+\begin{equation}
+X'' = \text{LayerNorm}(X' + \text{FFN}(X'))
+\end{equation}
+
+其中FFN为两层前馈网络（$512 \to 2048 \to 512$，ReLU激活）。该结构堆叠4层。最终取序列的平均池化输出送入分类头。
+
+\subsection{与简单拼接的区别}
+
+MLP拼接（Lite基线）直接将四模态特征concat后过全连接层，模态间无显式交互。Cross-Modal Attention通过注意力权重建模模态间的相关性，是一种更灵活的中间融合。第\ref{chap:exp}章的消融实验（A组）将对比两种融合策略的效果。
+
+\section{模态全局权重}
+\label{sec:modweight}
+
+除注意力机制外，网络学习一个可训练的模态权重向量 $\alpha \in \mathbb{R}^4$，经softmax归一化后作为各模态的全局重要性权重：
+
+\begin{equation}
+w = \text{softmax}(\alpha) = \frac{e^{\alpha_i}}{\sum_{j=1}^{4} e^{\alpha_j}}, \quad \sum_{i} w_i = 1
+\label{eq:modweight}
+\end{equation}
+
+融合特征为各模态投影特征的加权求和：
+
+\begin{equation}
+F_{global} = \sum_{i} w_i \cdot \tilde{F}_i
+\end{equation}
+
+该全局特征与注意力层的平均池化输出拼接后送入分类头。此设计使模型同时具备全局模态加权和细粒度跨模态交互两种能力，且权重 $w$ 可直接用于可解释性展示。
+
+\section{分类头}
+
+分类头为三层全连接网络：
+
+\begin{equation}
+\hat{y} = \text{softmax}(\text{MLP}([F_{attn}; F_{global}]))
+\end{equation}
+
+其中 $[F_{attn}; F_{global}] \in \mathbb{R}^{1024}$，经 $1024 \to 512 \to 256 \to 3$ 的全连接网络（每层含LayerNorm、ReLU、Dropout 0.3），输出三个风险等级的概率分布。
+
+\section{缺失数据处理}
+
+实际部署中模态数据常缺失（如老人未佩戴手环则无生理数据）。系统采用默认特征填充策略：用训练集中低风险样本的各模态特征均值作为默认值，如表\ref{tab:defaults}所示。
+
+\begin{table}[H]
+\centering
+\caption{缺失模态的默认特征填充策略}
+\label{tab:defaults}
+\begin{tabular}{llll}
+\toprule
+缺失模态 & 默认特征文件 & 含义 & L2范数 \\
+\midrule
+视频 & normal\_video.npy & 低风险视频特征均值 & 27.27 \\
+音频 & silent\_audio.npy & 低风险音频特征均值 & 24.69 \\
+生理 & healthy\_baseline.npy & 健康生理基线 & 6.70 \\
+用药 & no\_medication.npy & 无用药零向量 & 0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+此策略保证任意模态缺失时系统仍可推理，且默认值具有真实语义（基于训练集真实特征均值，而非随机噪声）。这使得缺失模态不会引入异常分布，模型能基于可用模态做出合理判断。
+
+\section{模型参数量}
+
+\begin{table}[H]
+\centering
+\caption{模型参数量对比}
+\label{tab:params}
+\begin{tabular}{lrr}
+\toprule
+模型 & 参数量 & 压缩比 \\
+\midrule
+Full (Cross-Modal Attention) & 8,511,495 & 100\% \\
+Lite (MLP Concat) & 3,740,163 & 43.94\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Full模型包含特征投影层（4$\times$）、模态嵌入、4层Cross-Modal Attention（每层含QKV投影+输出投影+FFN）、全局权重和分类头。Lite模型用单层MLP替代Cross-Modal Attention，参数量减少约56\%。

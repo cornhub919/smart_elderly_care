@@ -1,205 +1,31 @@
 """
 风险预测器
 加载训练好的模型进行风险预测
+
+说明：模型定义已统一到 smart_elderly_care_v2/models/fusion_net.py，
+本文件不再重复定义 MultiModalFusionNet，避免双份代码不一致导致权重加载失败。
 """
 
 import os
 import torch
-import torch.nn as nn
 import numpy as np
 from typing import Dict, Optional, Tuple
-import math
 
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 把项目根目录与 V2 目录加入搜索路径，使模型定义成为唯一真源（单一来源 Single Source of Truth）
+_APP_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))            # smart_elderly_care_app/
+_PROJECT_ROOT = os.path.dirname(_APP_ROOT)                                          # 多模态/
+_V2_ROOT = os.path.join(_PROJECT_ROOT, "smart_elderly_care_v2")                     # smart_elderly_care_v2/
+for _p in (_PROJECT_ROOT, _V2_ROOT):
+    if _p not in sys.path:
+        sys.path.append(_p)
 
 from config import MODEL_CONFIG, RISK_LEVELS, MODEL_PATH
 from inference.missing_handler import MissingDataHandler
 
-
-class CrossModalAttention(nn.Module):
-    """跨模态注意力机制"""
-    
-    def __init__(self, hidden_dim, num_heads=8, dropout=0.1):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.num_heads = num_heads
-        self.head_dim = hidden_dim // num_heads
-        
-        self.q_proj = nn.Linear(hidden_dim, hidden_dim)
-        self.k_proj = nn.Linear(hidden_dim, hidden_dim)
-        self.v_proj = nn.Linear(hidden_dim, hidden_dim)
-        self.out_proj = nn.Linear(hidden_dim, hidden_dim)
-        
-        self.dropout = nn.Dropout(dropout)
-        self.scale = math.sqrt(self.head_dim)
-        
-    def forward(self, query, key, value):
-        batch_size = query.size(0)
-        
-        Q = self.q_proj(query)
-        K = self.k_proj(key)
-        V = self.v_proj(value)
-        
-        Q = Q.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        K = K.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        V = V.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
-        
-        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / self.scale
-        attn_weights = torch.softmax(attn_scores, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-        
-        output = torch.matmul(attn_weights, V)
-        output = output.transpose(1, 2).contiguous().view(batch_size, -1, self.hidden_dim)
-        output = self.out_proj(output)
-        
-        return output, attn_weights
-
-
-class MultiModalFusionNet(nn.Module):
-    """多模态融合网络（与训练时保持一致）"""
-    
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        
-        video_dim = config['video_encoder']['hidden_dim']
-        audio_dim = config['audio_encoder']['hidden_dim']
-        health_dim = config['health_encoder']['hidden_dim']
-        med_dim = config['medication_encoder']['embedding_dim']
-        fusion_dim = config['fusion']['hidden_dim']
-        num_heads = config['fusion']['num_heads']
-        num_layers = config['fusion']['num_layers']
-        dropout = config['fusion']['dropout']
-        num_classes = config['classifier']['num_classes']
-        
-        # 特征投影层
-        self.video_proj = nn.Sequential(
-            nn.Linear(video_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-        
-        self.audio_proj = nn.Sequential(
-            nn.Linear(audio_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-        
-        self.health_proj = nn.Sequential(
-            nn.Linear(health_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-        
-        self.med_proj = nn.Sequential(
-            nn.Linear(med_dim, fusion_dim),
-            nn.LayerNorm(fusion_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout)
-        )
-        
-        # 模态类型嵌入
-        self.modality_embedding = nn.Embedding(4, fusion_dim)
-        
-        # Cross-Modal Attention 层
-        self.cross_attention_layers = nn.ModuleList([
-            CrossModalAttention(fusion_dim, num_heads, dropout)
-            for _ in range(num_layers)
-        ])
-        
-        # 自注意力层
-        self.self_attention = nn.MultiheadAttention(
-            embed_dim=fusion_dim,
-            num_heads=num_heads,
-            dropout=dropout,
-            batch_first=True
-        )
-        
-        # 前馈网络
-        self.ffn = nn.Sequential(
-            nn.Linear(fusion_dim, fusion_dim * 4),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(fusion_dim * 4, fusion_dim),
-            nn.Dropout(dropout)
-        )
-        
-        # 层归一化
-        self.norm1 = nn.LayerNorm(fusion_dim)
-        self.norm2 = nn.LayerNorm(fusion_dim)
-        
-        # 分类头
-        classifier_hidden = config['classifier']['hidden_dims']
-        classifier_dropout = config['classifier']['dropout']
-        
-        classifier_layers = []
-        input_dim = fusion_dim
-        for hidden_dim in classifier_hidden:
-            classifier_layers.extend([
-                nn.Linear(input_dim, hidden_dim),
-                nn.LayerNorm(hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(classifier_dropout)
-            ])
-            input_dim = hidden_dim
-        
-        classifier_layers.append(nn.Linear(input_dim, num_classes))
-        self.classifier = nn.Sequential(*classifier_layers)
-        
-        # 模态权重
-        self.modality_weights = nn.Parameter(torch.ones(4) / 4)
-        
-    def forward(self, video_feat, audio_feat, health_feat, med_feat):
-        batch_size = video_feat.size(0)
-        
-        # 投影
-        v = self.video_proj(video_feat)
-        a = self.audio_proj(audio_feat)
-        h = self.health_proj(health_feat)
-        m = self.med_proj(med_feat)
-        
-        # 模态嵌入
-        modality_ids = torch.arange(4, device=video_feat.device)
-        modality_embeds = self.modality_embedding(modality_ids)
-        
-        v = v + modality_embeds[0]
-        a = a + modality_embeds[1]
-        h = h + modality_embeds[2]
-        m = m + modality_embeds[3]
-        
-        # 堆叠
-        features = torch.stack([v, a, h, m], dim=1)
-        
-        # 模态权重
-        weights = torch.softmax(self.modality_weights, dim=0)
-        features = features * weights.view(1, 4, 1)
-        
-        # Cross-Modal Attention
-        for cross_attn in self.cross_attention_layers:
-            features_attended, _ = cross_attn(features, features, features)
-            features = features + features_attended
-        
-        # 自注意力
-        features_normed = self.norm1(features)
-        self_attn_output, _ = self.self_attention(
-            features_normed, features_normed, features_normed
-        )
-        features = features + self_attn_output
-        
-        # 前馈网络
-        features = features + self.ffn(self.norm2(features))
-        
-        # 全局池化
-        fused_features = features.mean(dim=1)
-        
-        # 分类
-        logits = self.classifier(fused_features)
-        
-        return logits
+# 统一从 V2 导入模型定义（与训练时完全一致）
+from models.fusion_net import MultiModalFusionNet
 
 
 class RiskPredictor:
@@ -261,7 +87,7 @@ class RiskPredictor:
             medication_features: 用药特征 [128] 或 None
             
         Returns:
-            预测结果字典
+            预测结果字典，包含 attention_weights 和 modality_weights（中间结果）
         """
         # 处理缺失数据
         features_dict = {
@@ -286,11 +112,28 @@ class RiskPredictor:
         health_tensor = health_tensor.to(self.device)
         med_tensor = med_tensor.to(self.device)
         
-        # 推理
+        # 推理（请求注意力权重用于可解释性展示）
         with torch.no_grad():
-            logits = self.model(video_tensor, audio_tensor, health_tensor, med_tensor)
+            logits, attn_weights_list = self.model(
+                video_tensor, audio_tensor, health_tensor, med_tensor,
+                return_attention=True,
+            )
             probs = torch.softmax(logits, dim=1)
             prediction = torch.argmax(probs, dim=1)
+
+        # 提取可学习的模态全局权重（softmax 后，detach 避免 requires_grad 报错）
+        modality_names = ["视频", "音频", "生理", "用药"]
+        modality_w = torch.softmax(self.model.modality_weights, dim=0).detach().cpu().numpy()
+
+        # 注意力权重：每层 [1, num_heads, 4, 4] → 对 batch+heads 求平均 → [4,4]
+        import numpy as _np
+        attn_avg = None
+        if attn_weights_list:
+            mats = []
+            for w in attn_weights_list:
+                arr = w[0].detach().cpu().numpy()  # [num_heads, 4, 4]
+                mats.append(arr.mean(axis=0))      # [4, 4] 对 heads 平均
+            attn_avg = _np.stack(mats).mean(axis=0)  # [4, 4] 对 layers 平均
         
         # 构建结果
         pred_class = prediction.item()
@@ -310,6 +153,12 @@ class RiskPredictor:
             'action': self.risk_levels[pred_class]['action'],
             'color': self.risk_levels[pred_class]['color'],
             'missing_modalities': [k for k, v in missing_info.items() if v],
+            # ---- 可解释性中间结果 ----
+            'modality_weights': {
+                name: float(modality_w[i]) for i, name in enumerate(modality_names)
+            },
+            'attention_matrix': attn_avg.tolist() if attn_avg is not None else None,
+            'modality_names': modality_names,
         }
         
         return result

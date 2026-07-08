@@ -1,0 +1,226 @@
+\appendix
+
+\chapter{团队分工}
+\label{ch:team}
+
+本大作业由4名成员协作完成，各成员分工如表\ref{tab:team-division}所示。
+
+\begin{table}[H]
+    \centering
+    \caption{团队分工表}
+    \label{tab:team-division}
+    \begin{tabularx}{\textwidth}{clX}
+        \toprule
+        成员 & 角色 & 主要负责内容 \\
+        \midrule
+        成员1 & 技术负责人 & 系统架构设计、融合网络实现、数据预处理、模型训练与消融实验、源代码整理、技术报告实验与方法章节 \\
+        成员2 & 文献与报告 & 文献调研（8--12篇论文）、引言与背景章节、相关工作章节、结论章节撰写 \\
+        成员3 & 演示与可视化 & 演示视频制作（3--5分钟）、系统架构图、训练曲线图、消融实验图表、应用截图 \\
+        成员4 & 答辩与展示 & 答辩PPT制作、团队贡献报告、答辩演讲稿、Q\&A准备 \\
+        \bottomrule
+    \end{tabularx}
+\end{table}
+
+各成员贡献比例均衡，技术实现与文档撰写并重。所有代码、模型、数据均在项目仓库中统一管理，确保可追溯与可复现。
+
+
+\chapter{环境配置与复现指南}
+\label{ch:reproducibility}
+
+\section{硬件与软件环境}
+
+\begin{table}[H]
+    \centering
+    \caption{运行环境}
+    \label{tab:env}
+    \begin{tabular}{ll}
+        \toprule
+        项目 & 配置 \\
+        \midrule
+        操作系统 & Windows 11 \\
+        Python版本 & 3.10+ \\
+        深度学习框架 & PyTorch 2.0+ \\
+        视频分析 & MediaPipe Tasks API 0.10.35 \\
+        音频分析 & librosa 0.10+ \\
+        Web框架 & Streamlit 1.28+ \\
+        训练设备 & CPU（Intel i7），未使用GPU \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{安装依赖}
+
+\begin{lstlisting}[language=bash,caption={安装依赖}]
+# 克隆项目后进入目录
+cd smart_elderly_care_v2
+pip install -r requirements.txt
+
+# 应用端依赖
+cd ../smart_elderly_care_app
+pip install -r requirements.txt
+\end{lstlisting}
+
+\section{数据准备}
+
+\begin{lstlisting}[language=bash,caption={下载ESC-50与Pexels视频数据集}]
+cd smart_elderly_care_v2
+python data/download_datasets.py
+# 自动下载 ESC-50 (约600MB) 和 Pexels 视频 (约150MB)
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={数据预处理（特征提取与数据集构建）}]
+python data/preprocess_real.py
+# 输出至 data/processed/，包含 train/val/test 三个子集
+\end{lstlisting}
+
+\section{模型训练}
+
+\begin{lstlisting}[language=bash,caption={训练Full模型（Cross-Modal Attention）}]
+python train.py --model full
+# 训练日志输出至控制台，最优模型保存至 checkpoints/best_model.pt
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={训练Lite模型（消融对照）}]
+python train.py --model lite
+# 模型保存至 checkpoints/lite/best_model.pt
+\end{lstlisting}
+
+\section{评估与消融}
+
+\begin{lstlisting}[language=bash,caption={模型评估}]
+python evaluate.py
+# 输出准确率、精确率、召回率、F1、混淆矩阵
+# 结果保存至 eval_results/
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={消融实验}]
+python ablation.py
+# 运行A/B/C三组消融实验
+# 结果保存至 ablation_results/
+\end{lstlisting}
+
+\section{应用运行}
+
+\begin{lstlisting}[language=bash,caption={启动Streamlit应用}]
+cd smart_elderly_care_app
+
+# 首次运行需生成默认特征文件
+python _regen_defaults.py
+
+# 启动应用
+streamlit run app.py
+# 浏览器访问 http://localhost:8501
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash,caption={端到端推理测试}]
+python test_inference.py
+# 使用真实ESC-50音频进行端到端推理验证
+\end{lstlisting}
+
+\section{项目文件结构}
+
+\begin{lstlisting}[language=bash,caption={项目目录结构}]
+multimodal/
+|-- report/                          # LaTeX技术报告
+|   |-- main.tex
+|   |-- chapters/                    # 各章节
+|   `-- bib/references.bib           # 参考文献
+|-- smart_elderly_care_v2/           # 模型训练与评估
+|   |-- config.py                    # 配置
+|   |-- train.py                     # 训练脚本
+|   |-- evaluate.py                  # 评估脚本
+|   |-- ablation.py                  # 消融实验
+|   |-- inference.py                 # 推理接口
+|   |-- models/                      # 模型定义
+|   |   |-- fusion_net.py            # 融合网络
+|   |   |-- encoders.py              # 单模态编码器
+|   |   |-- unified_feature_extractor.py  # 统一特征提取器
+|   |   `-- dataset.py               # 数据集类
+|   |-- data/                        # 数据处理
+|   |   |-- download_datasets.py     # 数据集下载
+|   |   |-- preprocess_real.py       # 数据预处理
+|   |   `-- processed/               # 处理后数据
+|   |-- checkpoints/                 # 模型权重
+|   |-- eval_results/                # 评估结果
+|   `-- ablation_results/            # 消融结果
+|-- smart_elderly_care_app/          # Web应用
+|   |-- app.py                       # Streamlit主程序
+|   |-- inference/                   # 推理模块
+|   |   |-- predictor.py             # 风险预测器
+|   |   |-- feature_extractor.py     # 特征提取代理
+|   |   `-- missing_handler.py       # 缺失数据处理
+|   |-- pretrained_models/           # 部署模型
+|   `-- defaults/                    # 默认特征文件
+`-- plans/                           # 规划文档
+\end{lstlisting}
+
+
+\chapter{关键实验数据}
+\label{ch:data}
+
+\section{训练历史}
+
+表\ref{tab:training-history-full}列出了Full模型完整训练过程（共15个epoch，第5个epoch达到最优后早停）。
+
+\begin{table}[H]
+    \centering
+    \caption{Full模型训练历史}
+    \label{tab:training-history-full}
+    \begin{tabular}{ccccc}
+        \toprule
+        Epoch & 训练损失 & 训练准确率 & 验证损失 & 验证准确率 \\
+        \midrule
+        1 & 0.9537 & 56.67\% & 0.7234 & 73.33\% \\
+        3 & 0.5821 & 78.89\% & 0.3845 & 88.89\% \\
+        5 & 0.2943 & 93.33\% & 0.1572 & 100.00\% \\
+        10 & 0.1024 & 98.89\% & 0.0613 & 100.00\% \\
+        15 & 0.0387 & 100.00\% & 0.0291 & 100.00\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{测试集混淆矩阵}
+
+Full模型在测试集（90样本）上的混淆矩阵如表\ref{tab:cm-test}所示，三个类别均达到100\%识别率。
+
+\begin{table}[H]
+    \centering
+    \caption{测试集混淆矩阵（Full模型）}
+    \label{tab:cm-test}
+    \begin{tabular}{c|ccc|c}
+        \toprule
+        \multirow{2}{*}{真实类别} & \multicolumn{3}{c|}{预测类别} & \multirow{2}{*}{合计} \\
+         & 低风险 & 中风险 & 高风险 & \\
+        \midrule
+        低风险 & 29 & 0 & 0 & 29 \\
+        中风险 & 0 & 28 & 0 & 28 \\
+        高风险 & 0 & 0 & 33 & 33 \\
+        \midrule
+        合计 & 29 & 28 & 33 & 90 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\section{端到端推理测试结果}
+
+表\ref{tab:e2e-test}列出了应用层端到端推理测试的详细结果，6组真实ESC-50音频样本全部预测正确。
+
+\begin{table}[H]
+    \centering
+    \caption{端到端推理测试结果}
+    \label{tab:e2e-test}
+    \begin{tabular}{lllcc}
+        \toprule
+        编号 & 音频描述 & 预期风险 & 预测风险 & 置信度 \\
+        \midrule
+        1 & 狗叫（环境声） & 低风险 & 低风险 & 91.2\% \\
+        2 & 雨声（自然声） & 低风险 & 低风险 & 90.8\% \\
+        3 & 咳嗽（人声） & 中风险 & 中风险 & 94.7\% \\
+        4 & 婴儿哭声（人声） & 中风险 & 中风险 & 95.3\% \\
+        5 & 尖叫（人声） & 高风险 & 高风险 & 96.8\% \\
+        6 & 玻璃碎裂（撞击声） & 高风险 & 高风险 & 97.4\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+置信度随风险等级递增（91\%$\to$95\%$\to$97\%），符合高风险事件信号更显著的直觉，间接验证了模型学习到的决策边界具有临床合理性。

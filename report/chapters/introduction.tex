@@ -1,0 +1,44 @@
+\chapter{引言}
+\label{chap:intro}
+
+\section{研究背景}
+
+中国正经历快速人口老龄化。据国家统计局数据，60岁及以上人口已超2.8亿，独居老人安全风险日益突出。跌倒是65岁以上老人意外伤害的首要原因，每年约30\%的老人至少跌倒一次\cite{rachakonda2020cstick}。传统的单模态监护方式各有局限：
+
+\begin{itemize}
+    \item \textbf{视频监控}：存在隐私争议，且单一视觉信号在遮挡、弱光下易失效；
+    \item \textbf{音频监测}：误报率高，无法区分撞击声与环境噪声\cite{popescu2009acoustic}；
+    \item \textbf{穿戴式生理设备}：老人依从性差，需主动佩戴；
+    \item \textbf{用药记录}：单独无法反映即时风险。
+\end{itemize}
+
+多模态融合能够互补各模态优势，提升风险评估的可靠性与鲁棒性，是智慧居家养老的发展趋势\cite{baltrusaitis2019multimodal}。
+
+\section{研究问题}
+
+本工作聚焦以下科学问题：
+
+\begin{enumerate}
+    \item 如何将异构的四模态数据（视频、音频、生理时序、用药记录）有效融合，而非简单拼接？
+    \item 跨模态注意力机制相比固定权重融合，能否学习到模态间的交互关系？
+    \item 在真实公开数据（而非纯模拟数据）上训练的融合模型，各模态对最终决策的贡献如何量化？
+    \item 实际部署中模态数据常缺失，系统如何保持可用性？
+\end{enumerate}
+
+\section{主要贡献}
+
+本工作的主要贡献如下：
+
+\begin{enumerate}
+    \item \textbf{四模态真实数据融合架构}：设计并实现基于4层Cross-Modal Attention的融合网络，四模态全部基于真实公开数据（ESC-50音频\cite{piczak2015esc} + Pexels视频 + 半合成生理/用药）训练，消融实验验证四模态均参与决策。
+    
+    \item \textbf{MediaPipe Tasks API骨架特征提取}：将视频模态从零向量升级为基于MediaPipe PoseLandmarker\cite{lugaresi2019mediapipe}的真实人体骨架运动特征（33关键点$\to$轨迹+角度+速度$\to$768维），特征非零率从7.6\%提升至100\%。
+    
+    \item \textbf{系统性消融实验}：通过A组（融合策略对比）、B组（单模态屏蔽）、C组（模态重要性量化）三组实验，量化各模态贡献，证明多模态融合优于单模态。
+    
+    \item \textbf{可解释性与实用性}：提供模态权重柱状图、跨模态注意力热力图、缺失数据处理机制和健康周报生成，开发完整Streamlit Web应用。
+\end{enumerate}
+
+\section{报告结构}
+
+本报告的结构如下：第\ref{chap:related}章回顾多模态融合、跌倒检测、环境声音分类等相关工作；第\ref{chap:method}章描述系统总体架构与跨模态注意力机制方法；第\ref{chap:data}章介绍数据集与统一特征提取器；第\ref{chap:exp}章给出实验设置、训练过程、测试结果与消融分析；第\ref{chap:discuss}章讨论局限性与未来工作方向；第\ref{chap:concl}章总结全文。

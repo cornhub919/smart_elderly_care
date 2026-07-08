@@ -18,6 +18,11 @@ from sklearn.metrics import (
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# 中文字体配置（修复图表中文方块问题）
+import matplotlib
+matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'SimSun', 'DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import get_config
@@ -214,7 +219,7 @@ def main():
         model = MultiModalFusionNetLite(model_config)
     
     # 加载权重
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     print(f"加载模型: {args.checkpoint}")

@@ -1,0 +1,5 @@
+{
+  "dataset": "ESC-50",
+  "source": "https://github.com/karoldvl/ESC-50/archive/refs/heads/master.zip",
+  "note": "2000 条 5s 音频，50 类"
+}
